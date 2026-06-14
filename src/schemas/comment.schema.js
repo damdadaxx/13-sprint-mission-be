@@ -5,11 +5,24 @@
 
 import { z } from "zod";
 
-// 생성 스키마 (사용자 입력)
-export const createCommentSchema = z.object({
+/** 공통 필드 */
+const baseCommentSchema = {
   content: z.string().min(1, "content는 1자 이상이어야 합니다").trim(),
-  productId: z.number().int().optional(),
-  articleId: z.number().int().optional(),
+  // userId: z.number().int(), TODO: 로그인 기능 개발후 필요
+};
+
+/** 상품 댓글 */
+// 생성 스키마 (사용자 입력)
+export const createProductCommentSchema = z.object(baseCommentSchema);
+// 수정 스키마
+export const updateProductCommentSchema = z.object({
+  content: z.string().min(1, "content는 1자 이상이어야 합니다").trim(),
 });
 
-export const updateCommentSchema = createCommentSchema.partial();
+/** 게시글 댓글 */
+// 생성 스키마 (사용자 입력)
+export const createArticleCommentSchema = z.object(baseCommentSchema);
+// 수정 스키마
+export const updateArticleCommentSchema = z.object({
+  content: z.string().min(1, "content는 1자 이상이어야 합니다").trim(),
+});
