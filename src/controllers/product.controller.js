@@ -10,6 +10,8 @@ import {
   createProductSchema,
   updateProductSchema,
 } from "../schemas/product.schema.js";
+import { TEMP_USER_ID } from "../utils/constants.js";
+import parseId from "../utils/parse.js";
 
 // API 응답 변환: tag 필드만 추출해서 다시 문자열 배열로
 export const convertToProductResponse = (product) => ({
@@ -36,7 +38,7 @@ export const getAllProducts = asyncHandler(async (req, res) => {
 
   const sortOption = {
     recent: { createdAt: "desc" },
-    // favorite: { favoriteCount: "desc" },
+    // like: { likeCount: "desc" },
   }[orderBy] || { createdAt: "desc" };
 
   const offset = (currentPage - 1) * itemsPerPage;
@@ -70,9 +72,11 @@ export const getProduct = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const product = await prisma.product.findUniqueOrThrow({
-    where: { id: parseInt(id, 10) },
+    where: { id: parseId(id) },
     include: {
+      user: true,
       tags: true,
+      productComments: true,
     },
   });
 
@@ -88,13 +92,14 @@ export const createProduct = asyncHandler(async (req, res, next) => {
   const product = await prisma.product.create({
     data: {
       ...data,
-      favoriteCount: 0,
+      likeCount: 0,
       // Tag 모델 형식으로 변환
       tags: {
         create: tags.map((tagName) => ({
           tag: tagName,
         })),
       },
+      user: { connect: { id: TEMP_USER_ID } },
     },
     include: {
       tags: true,
@@ -109,20 +114,17 @@ export const createProduct = asyncHandler(async (req, res, next) => {
 export const updateProduct = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const data = updateProductSchema.parse(req.body); // 유효성 검사 완료된 데이터
-  const { name, price, description, tags } = data;
+  const { tags, ...rest } = data;
 
   const product = await prisma.product.update({
-    where: { id: parseInt(id, 10) },
+    where: { id: parseId(id) },
     data: {
-      // 기본 필드 (있으면 업데이트)
-      ...(name && { name: name }),
-      ...(req.body.price && { price: price }),
-      ...(description && { description: description }),
-
+      // tags를 제외한 기본 필드 (있으면 업데이트)
+      ...rest,
       // tags (있으면 삭제 후 새로 생성)
       ...(tags && {
         tags: {
-          deleteMany: {}, // 기존 모두 삭제
+          deleteMany: {}, // 기존 tags 모두 삭제
           create: tags.map((tagName) => ({
             tag: tagName,
           })),
@@ -141,7 +143,7 @@ export const deleteProduct = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   await prisma.product.delete({
-    where: { id: parseInt(id) },
+    where: { id: parseId(id) },
   });
 
   res.json({ success: true, message: "상품이 삭제되었습니다" });

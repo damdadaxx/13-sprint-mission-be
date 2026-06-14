@@ -10,6 +10,8 @@ import {
   createArticleSchema,
   updateArticleSchema,
 } from "../schemas/article.schema.js";
+import { TEMP_USER_ID } from "../utils/constants.js";
+import parseId from "../utils/parse.js";
 
 // GET /articles
 export const getAllArticles = asyncHandler(async (req, res) => {
@@ -30,6 +32,7 @@ export const getAllArticles = asyncHandler(async (req, res) => {
 
   const sortOption = {
     recent: { createdAt: "desc" },
+    like: { likeCount: "desc" },
   }[orderBy] || { createdAt: "desc" };
 
   const offset = (currentPage - 1) * itemsPerPage;
@@ -40,6 +43,9 @@ export const getAllArticles = asyncHandler(async (req, res) => {
       skip: offset,
       take: itemsPerPage,
       orderBy: sortOption,
+      include: {
+        user: true,
+      },
     }),
     prisma.article.count({ where }),
   ]);
@@ -63,9 +69,10 @@ export const getArticle = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   const article = await prisma.article.findUniqueOrThrow({
-    where: { id: parseInt(id, 10) },
+    where: { id: parseId(id) },
     include: {
-      comments: true,
+      user: true,
+      articleComments: true,
     },
   });
 
@@ -77,7 +84,11 @@ export const createArticle = asyncHandler(async (req, res) => {
   const data = createArticleSchema.parse(req.body); // 유효성 검사 완료된 데이터
 
   const article = await prisma.article.create({
-    data,
+    data: {
+      ...data,
+      likeCount: 0,
+      user: { connect: { id: TEMP_USER_ID } },
+    },
   });
 
   res.status(201).json({ success: true, data: article });
@@ -90,7 +101,7 @@ export const updateArticle = asyncHandler(async (req, res) => {
   const { title, content } = data;
 
   const article = await prisma.article.update({
-    where: { id: parseInt(id, 10) },
+    where: { id: parseId(id) },
     data: {
       // 기본 필드 (있으면 업데이트)
       ...(title && { title: title }),
@@ -106,7 +117,7 @@ export const deleteArticle = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
   await prisma.article.delete({
-    where: { id: parseInt(id, 10) },
+    where: { id: parseId(id) },
   });
 
   res.json({ success: true, message: "게시글이 삭제되었습니다" });

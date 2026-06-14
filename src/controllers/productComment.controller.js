@@ -8,9 +8,11 @@ import prisma from "../lib/prisma.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { NotFoundError, ValidationError } from "../utils/errors.js";
 import {
-  createCommentSchema,
-  updateCommentSchema,
+  createProductCommentSchema,
+  updateProductCommentSchema,
 } from "../schemas/comment.schema.js";
+import parseId from "../utils/parse.js";
+import { TEMP_USER_ID } from "../utils/constants.js";
 
 // GET /items/:productId/comments
 export const getAllProductComments = asyncHandler(async (req, res) => {
@@ -18,26 +20,22 @@ export const getAllProductComments = asyncHandler(async (req, res) => {
   const { productId } = req.params;
 
   // product 댓글만 가져오기
-  const parsedProductId = parseInt(productId, 10);
-  const whereCondition = {
-    productId: !isNaN(parsedProductId) ? parsedProductId : undefined,
-    articleId: null,
-  };
+  const parsedProductId = parseId(productId);
 
-  if (isNaN(parsedProductId)) {
-    throw new ValidationError("유효한 상품 ID가 아닙니다");
-  }
-
-  // 댓글 존재 확인
-  const commentCount = await prisma.comment.count({
-    where: whereCondition,
+  // 상품 존재 확인
+  const product = await prisma.product.findUnique({
+    where: { id: parsedProductId },
   });
 
-  if (commentCount === 0) {
+  if (!product) {
     throw new NotFoundError(
-      `상품 ID가 '${parsedProductId}'인 댓글을 찾을 수 없습니다`,
+      `ID가 '${parsedProductId}'인 상품을 찾을 수 없습니다`,
     );
   }
+
+  const whereCondition = {
+    productId: parsedProductId,
+  };
 
   const sortOption = {
     recent: { createdAt: "desc" },
@@ -47,7 +45,7 @@ export const getAllProductComments = asyncHandler(async (req, res) => {
   const cursorId = parseInt(cursor) || null;
 
   const [data, totalItems] = await Promise.all([
-    prisma.comment.findMany({
+    prisma.productComment.findMany({
       where: whereCondition,
       take: pageSize + 1,
       ...(cursorId && {
@@ -58,7 +56,7 @@ export const getAllProductComments = asyncHandler(async (req, res) => {
       }),
       orderBy: sortOption,
     }),
-    prisma.comment.count({ where: whereCondition }),
+    prisma.productComment.count({ where: whereCondition }),
   ]);
 
   const hasNextPage = data.length > pageSize;
@@ -77,15 +75,18 @@ export const getAllProductComments = asyncHandler(async (req, res) => {
 
 // POST /items/:productId/comments
 export const createProductComment = asyncHandler(async (req, res) => {
-  const data = createCommentSchema.parse(req.body); // 유효성 검사 완료된 데이터
+  const data = createProductCommentSchema.parse(req.body); // 유효성 검사 완료된 데이터
   const { productId } = req.params;
   const { content } = data;
+  // TODO: 추후 로그인 인증 기능 작업 시 추가 : const userId = req.user.id
 
+  console.log();
   // 생성
-  const comment = await prisma.comment.create({
+  const comment = await prisma.productComment.create({
     data: {
       content,
-      productId: parseInt(productId),
+      user: { connect: { id: TEMP_USER_ID } }, // TODO: 임시 user 데이터
+      product: { connect: { id: parseId(productId) } },
     },
   });
 
@@ -95,56 +96,61 @@ export const createProductComment = asyncHandler(async (req, res) => {
 // PATCH /items/:productId/comments/:commentId
 export const updateProductComment = asyncHandler(async (req, res) => {
   const { productId, commentId } = req.params;
-  const data = updateCommentSchema.parse(req.body); // 유효성 검사 완료된 데이터
+  const data = updateProductCommentSchema.parse(req.body); // 유효성 검사 완료된 데이터
   const { content } = data;
 
+  const parsedProductId = parseId(productId);
+  const parsedCommentId = parseId(commentId);
+
   // comment 존재 확인
-  const comment = await prisma.comment.findUnique({
-    where: { id: parseInt(commentId) },
+  const comment = await prisma.productComment.findUnique({
+    where: { id: parsedCommentId },
   });
 
   if (!comment) {
-    throw new NotFoundError(`${commentId} 댓글을 찾을 수 없습니다`);
+    throw new NotFoundError(`${parsedCommentId} 댓글을 찾을 수 없습니다`);
   }
 
   // 해당 상품의 comment인지 확인
-  if (comment.productId !== parseInt(productId)) {
-    throw new ValidationError(`${productId} 상품의 댓글이 아닙니다`);
+  if (comment.productId !== parsedProductId) {
+    throw new ValidationError(`${parsedProductId} 상품의 댓글이 아닙니다`);
   }
 
   // 수정
-  await prisma.comment.update({
-    where: { id: parseInt(commentId) },
+  const updated = await prisma.productComment.update({
+    where: { id: parsedCommentId },
     data: {
       content,
-      productId: parseInt(productId),
     },
   });
 
-  res.json({ success: true, data: comment });
+  res.json({ success: true, data: updated });
 });
 
 // DELETE /items/:productId/comments/:commentId
 export const deleteProductComment = asyncHandler(async (req, res) => {
   const { commentId, productId } = req.params;
 
+  const parsedProductId = parseId(productId);
+  const parsedCommentId = parseId(commentId);
+
   // comment 존재 확인
-  const comment = await prisma.comment.findUnique({
-    where: { id: parseInt(commentId) },
+  const comment = await prisma.productComment.findUnique({
+    where: { id: parsedCommentId },
   });
 
   if (!comment) {
-    throw new NotFoundError(`${commentId} 댓글을 찾을 수 없습니다`);
+    throw new NotFoundError(`${parsedCommentId} 댓글을 찾을 수 없습니다`);
   }
 
   // 해당 상품의 comment인지 확인
-  if (comment.productId !== parseInt(productId)) {
-    throw new ValidationError(`${productId} 상품의 댓글이 아닙니다`);
+  if (comment.productId !== parsedProductId) {
+    throw new ValidationError(`${parsedProductId} 상품의 댓글이 아닙니다`);
   }
 
   // 삭제
-  await prisma.comment.delete({
-    where: { id: parseInt(commentId) },
+  await prisma.productComment.delete({
+    where: { id: parsedCommentId },
   });
 
   res.json({ success: true, message: "댓글이 삭제되었습니다" });

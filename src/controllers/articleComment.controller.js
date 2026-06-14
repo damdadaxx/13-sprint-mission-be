@@ -8,9 +8,11 @@ import prisma from "../lib/prisma.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { NotFoundError, ValidationError } from "../utils/errors.js";
 import {
-  createCommentSchema,
-  updateCommentSchema,
+  createArticleCommentSchema,
+  updateArticleCommentSchema,
 } from "../schemas/comment.schema.js";
+import parseId from "../utils/parse.js";
+import { TEMP_USER_ID } from "../utils/constants.js";
 
 // GET /articles/:articleId/comments
 export const getAllArticleComments = asyncHandler(async (req, res) => {
@@ -18,26 +20,22 @@ export const getAllArticleComments = asyncHandler(async (req, res) => {
   const { articleId } = req.params;
 
   // article 댓글만 가져오기
-  const parsedArticleId = parseInt(articleId);
-  const whereCondition = {
-    articleId: !isNaN(parsedArticleId) ? parsedArticleId : undefined,
-    productId: null,
-  };
+  const parsedArticleId = parseId(articleId);
 
-  if (isNaN(parsedArticleId)) {
-    throw new ValidationError("유효한 게시글 ID가 아닙니다");
-  }
-
-  // 댓글 존재 확인
-  const commentCount = await prisma.comment.count({
-    where: whereCondition,
+  // 상품 존재 확인
+  const article = await prisma.article.findUnique({
+    where: { id: parsedArticleId },
   });
 
-  if (commentCount === 0) {
+  if (!article) {
     throw new NotFoundError(
-      `게시글 ID가 '${parsedArticleId}'인 댓글을 찾을 수 없습니다`,
+      `게시글 ID가 '${parsedArticleId}'인 게시글을 찾을 수 없습니다`,
     );
   }
+
+  const whereCondition = {
+    articleId: parsedArticleId,
+  };
 
   const sortOption = {
     recent: { createdAt: "desc" },
@@ -47,7 +45,7 @@ export const getAllArticleComments = asyncHandler(async (req, res) => {
   const cursorId = parseInt(cursor) || null;
 
   const [data, totalItems] = await Promise.all([
-    prisma.comment.findMany({
+    prisma.articleComment.findMany({
       where: whereCondition,
       take: pageSize + 1,
       ...(cursorId && {
@@ -58,7 +56,7 @@ export const getAllArticleComments = asyncHandler(async (req, res) => {
       }),
       orderBy: sortOption,
     }),
-    prisma.comment.count({ where: whereCondition }),
+    prisma.articleComment.count({ where: whereCondition }),
   ]);
 
   const hasNextPage = data.length > pageSize;
@@ -77,15 +75,17 @@ export const getAllArticleComments = asyncHandler(async (req, res) => {
 
 // POST /articles/:articleId/comments
 export const createArticleComment = asyncHandler(async (req, res) => {
-  const data = createCommentSchema.parse(req.body); // 유효성 검사 완료된 데이터
+  const data = createArticleCommentSchema.parse(req.body); // 유효성 검사 완료된 데이터
   const { articleId } = req.params;
   const { content } = data;
+  // TODO: 추후 로그인 인증 기능 추가시 변경 : const userId = req.user.id
 
   // 생성
-  const comment = await prisma.comment.create({
+  const comment = await prisma.articleComment.create({
     data: {
       content,
-      articleId: parseInt(articleId),
+      user: { connect: { id: TEMP_USER_ID } }, // TODO: 임시 user 데이터
+      article: { connect: { id: parseId(articleId) } },
     },
   });
 
@@ -95,12 +95,15 @@ export const createArticleComment = asyncHandler(async (req, res) => {
 // PATCH /articles/:articleId/comments/:commentId
 export const updateArticleComment = asyncHandler(async (req, res) => {
   const { articleId, commentId } = req.params;
-  const data = updateCommentSchema.parse(req.body); // 유효성 검사 완료된 데이터
+  const data = updateArticleCommentSchema.parse(req.body); // 유효성 검사 완료된 데이터
   const { content } = data;
 
+  const parsedArticleId = parseId(articleId);
+  const parsedCommentId = parseId(commentId);
+
   // comment 존재 확인
-  const comment = await prisma.comment.findUnique({
-    where: { id: parseInt(commentId) },
+  const comment = await prisma.articleComment.findUnique({
+    where: { id: parsedCommentId },
   });
 
   if (!comment) {
@@ -108,43 +111,45 @@ export const updateArticleComment = asyncHandler(async (req, res) => {
   }
 
   // 해당 게시글의 comment인지 확인
-  if (comment.articleId !== parseInt(articleId)) {
-    throw new ValidationError(`${articleId} 게시글의 댓글이 아닙니다`);
+  if (comment.articleId !== parsedArticleId) {
+    throw new ValidationError(`${parsedArticleId} 게시글의 댓글이 아닙니다`);
   }
 
   // 수정
-  await prisma.comment.update({
-    where: { id: parseInt(commentId) },
+  const updated = await prisma.articleComment.update({
+    where: { id: parsedCommentId },
     data: {
       content,
-      articleId: parseInt(articleId),
     },
   });
 
-  res.json({ success: true, data: comment });
+  res.json({ success: true, data: updated });
 });
 
 // DELETE /articles/:articleId/comments/:commentId
 export const deleteArticleComment = asyncHandler(async (req, res) => {
   const { commentId, articleId } = req.params;
 
+  const parsedArticleId = parseId(articleId);
+  const parsedCommentId = parseId(commentId);
+
   // comment 존재 확인
-  const comment = await prisma.comment.findUnique({
-    where: { id: parseInt(commentId) },
+  const comment = await prisma.articleComment.findUnique({
+    where: { id: parsedCommentId },
   });
 
   if (!comment) {
-    throw new NotFoundError(`${commentId} 댓글을 찾을 수 없습니다`);
+    throw new NotFoundError(`${parsedCommentId} 댓글을 찾을 수 없습니다`);
   }
 
   // 해당 게시글의 comment인지 확인
-  if (comment.articleId !== parseInt(articleId)) {
-    throw new ValidationError(`${articleId} 게시글의 댓글이 아닙니다`);
+  if (comment.articleId !== parsedArticleId) {
+    throw new ValidationError(`${parsedArticleId} 게시글의 댓글이 아닙니다`);
   }
 
   // 삭제
-  await prisma.comment.delete({
-    where: { id: parseInt(commentId) },
+  await prisma.articleComment.delete({
+    where: { id: parsedCommentId },
   });
 
   res.json({ success: true, message: "댓글이 삭제되었습니다" });
