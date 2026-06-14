@@ -4,6 +4,7 @@ import express from "express";
 
 import itemRouter from "./src/routes/item.routes.js";
 import articleRouter from "./src/routes/article.routes.js";
+import { errorHandler } from "./src/utils/errorHandler.js";
 
 // 환경 변수 로드
 const env = process.env.NODE_ENV || "development";
@@ -44,6 +45,9 @@ async function start() {
     // 라우터 등록
     app.use("/items", itemRouter);
     app.use("/articles", articleRouter);
+    
+    // 에러 핸들러 등록
+    app.use(errorHandler);
 
     // 서버 실행
     app.listen(PORT, () => {
