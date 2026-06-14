@@ -8,18 +8,36 @@ import { faker } from "@faker-js/faker";
 const prisma = new PrismaClient();
 
 async function main() {
-  // 기존 데이터 삭제
-  await prisma.comment.deleteMany();
-  await prisma.article.deleteMany();
+  // 기존 데이터 삭제 (FK 의존성 역순)
+  await prisma.productComment.deleteMany();
+  await prisma.articleComment.deleteMany();
   await prisma.tag.deleteMany();
+  await prisma.article.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.user.deleteMany();
   console.log("🧹 기존 데이터 삭제 완료");
+
+  // ----------- 유저 생성 -----------
+  const users = await Promise.all(
+    Array.from({ length: 5 }).map(() =>
+      prisma.user.create({
+        data: {
+          username: faker.internet.username(),
+          avatar: faker.image.avatar(),
+        },
+      }),
+    ),
+  );
+  console.log(`✅ 유저 ${users.length}명 생성`);
+
+  const randomUser = () => users[Math.floor(Math.random() * users.length)];
 
   // ----------- 초기 상품 데이터 + 댓글 X -----------
   await prisma.product.create({
     data: {
       name: "맥북 프로",
       description: "맥북 프로 입니다.",
+      userId: randomUser().id,
       tags: {
         createMany: {
           data: [{ tag: "전자제품" }, { tag: "맥북" }],
@@ -32,6 +50,7 @@ async function main() {
     data: {
       name: "냉장고",
       description: "냉장고 입니다.",
+      userId: randomUser().id,
       tags: {
         createMany: {
           data: [{ tag: "전자제품" }, { tag: "가전" }],
@@ -47,6 +66,7 @@ async function main() {
     data: {
       title: "맥북 16인치 16기가 1테라 정도 사양이면 얼마에 팔아야 하나요?",
       content: "맥북 16인치 16기가 1테라 정도 사양이면 얼마에 팔아야 하나요?",
+      userId: randomUser().id,
     },
   });
 
@@ -54,10 +74,11 @@ async function main() {
     data: {
       title: "아이폰 프로 16 구합니다",
       content: "아이폰 프로 16 구합니다. 연락주세요.",
+      userId: randomUser().id,
     },
   });
 
-  console.log("✅ 초기 게시글 2개 생성 (댓글 포함)");
+  console.log("✅ 초기 게시글 2개 생성");
 
   // ----------- 랜덤 데이터 30개 -----------
   const randomDataPromises = [];
@@ -69,7 +90,8 @@ async function main() {
           name: faker.string.alphanumeric(5),
           description: faker.commerce.productDescription(),
           price: faker.number.int({ min: 10000, max: 500000 }),
-          favoriteCount: 0,
+          likeCount: 0,
+          userId: randomUser().id,
           tags: {
             createMany: {
               data: [
@@ -78,11 +100,11 @@ async function main() {
               ],
             },
           },
-          comments: {
+          productComments: {
             createMany: {
               data: [
-                { content: faker.lorem.sentence() },
-                { content: faker.lorem.sentence() },
+                { content: faker.lorem.sentence(), userId: randomUser().id },
+                { content: faker.lorem.sentence(), userId: randomUser().id },
               ],
             },
           },
@@ -95,11 +117,12 @@ async function main() {
         data: {
           title: faker.lorem.sentence({ min: 3, max: 8 }),
           content: faker.lorem.paragraph(),
-          comments: {
+          userId: randomUser().id,
+          articleComments: {
             createMany: {
               data: [
-                { content: faker.lorem.sentence() },
-                { content: faker.lorem.sentence() },
+                { content: faker.lorem.sentence(), userId: randomUser().id },
+                { content: faker.lorem.sentence(), userId: randomUser().id },
               ],
             },
           },
