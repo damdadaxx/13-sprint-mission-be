@@ -37,6 +37,7 @@ async function main() {
     data: {
       name: "맥북 프로",
       description: "맥북 프로 입니다.",
+      likeCount: faker.number.int({ min: 0, max: 100 }),
       userId: randomUser().id,
       tags: {
         createMany: {
@@ -50,6 +51,7 @@ async function main() {
     data: {
       name: "냉장고",
       description: "냉장고 입니다.",
+      likeCount: faker.number.int({ min: 0, max: 100 }),
       userId: randomUser().id,
       tags: {
         createMany: {
@@ -90,7 +92,7 @@ async function main() {
           name: faker.string.alphanumeric(5),
           description: faker.commerce.productDescription(),
           price: faker.number.int({ min: 10000, max: 500000 }),
-          likeCount: 0,
+          likeCount: faker.number.int({ min: 0, max: 100 }),
           userId: randomUser().id,
           tags: {
             createMany: {
