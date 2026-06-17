@@ -55,6 +55,9 @@ export const getAllArticleComments = asyncHandler(async (req, res) => {
         },
       }),
       orderBy: sortOption,
+      include: {
+        user: true,
+      },
     }),
     prisma.articleComment.count({ where: whereCondition }),
   ]);
